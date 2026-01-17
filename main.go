@@ -157,7 +157,8 @@ func main() {
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240")).
 		BorderBottom(true).
-		Bold(true)
+		Bold(true).
+		Foreground(lipgloss.Color("39"))
 	s.Selected = s.Selected.
 		Foreground(lipgloss.Color("229")).
 		Background(lipgloss.Color("57")).
