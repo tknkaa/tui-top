@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -74,6 +75,12 @@ func main() {
 	}
 
 	deltaTotal := total2 - total1
+	type ProcInfo struct {
+		PID  int
+		Name string
+		CPU  float64
+	}
+	procs := []ProcInfo{}
 	for _, pid := range pids {
 		commPath := fmt.Sprintf("/proc/%d/comm", pid)
 		comm, err := os.ReadFile(commPath)
@@ -84,8 +91,17 @@ func main() {
 		pt2, ok2 := procTimes2[pid]
 		if ok1 && ok2 && deltaTotal > 0 {
 			cpu := float64(pt2-pt1) / float64(deltaTotal) * 100
-			fmt.Printf("PID: %d, Name: %s, CPU: %.2f%%\n", pid, strings.TrimSpace(string(comm)), cpu)
+			procs = append(procs, ProcInfo{PID: pid, Name: strings.TrimSpace(string(comm)), CPU: cpu})
 		}
 	}
-}
 
+	// Sort by CPU usage descending
+	// import "sort" at the top
+	sort.Slice(procs, func(i, j int) bool {
+		return procs[i].CPU > procs[j].CPU
+	})
+
+	for _, p := range procs {
+		fmt.Printf("PID: %d, Name: %s, CPU: %.2f%%\n", p.PID, p.Name, p.CPU)
+	}
+}
