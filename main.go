@@ -7,7 +7,17 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/bubbles/table"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
+
+type ProcInfo struct {
+	PID  int
+	Name string
+	CPU  float64
+}
 
 func readProcStat(pid int) (uint64, uint64, error) {
 	statPath := fmt.Sprintf("/proc/%d/stat", pid)
@@ -33,7 +43,6 @@ func readTotalCPU() (uint64, error) {
 		return 0, err
 	}
 	lines := strings.Split(string(data), "\n")
-	fmt.Println("first line of /proc/stat", lines[0])
 	fields := strings.Fields(lines[0])
 	var total uint64
 	for _, v := range fields[1:] {
@@ -43,7 +52,30 @@ func readTotalCPU() (uint64, error) {
 	return total, nil
 }
 
-func main() {
+type model struct {
+	table table.Model
+}
+
+func (m model) Init() tea.Cmd { return nil }
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			return m, tea.Quit
+		}
+	}
+	m.table, cmd = m.table.Update(msg)
+	return m, cmd
+}
+
+func (m model) View() string {
+	return m.table.View() + "\nPress q to quit.\n"
+}
+
+func getProcessList() []ProcInfo {
 	entries, _ := os.ReadDir("/proc")
 	pids := []int{}
 	for _, e := range entries {
@@ -52,7 +84,6 @@ func main() {
 		}
 	}
 
-	// First sample
 	procTimes1 := make(map[int]uint64)
 	total1, _ := readTotalCPU()
 	for _, pid := range pids {
@@ -62,9 +93,8 @@ func main() {
 		}
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(1 * time.Second)
 
-	// Second sample
 	procTimes2 := make(map[int]uint64)
 	total2, _ := readTotalCPU()
 	for _, pid := range pids {
@@ -75,11 +105,6 @@ func main() {
 	}
 
 	deltaTotal := total2 - total1
-	type ProcInfo struct {
-		PID  int
-		Name string
-		CPU  float64
-	}
 	procs := []ProcInfo{}
 	for _, pid := range pids {
 		commPath := fmt.Sprintf("/proc/%d/comm", pid)
@@ -95,13 +120,54 @@ func main() {
 		}
 	}
 
-	// Sort by CPU usage descending
-	// import "sort" at the top
 	sort.Slice(procs, func(i, j int) bool {
 		return procs[i].CPU > procs[j].CPU
 	})
 
+	return procs
+}
+
+func main() {
+	procs := getProcessList()
+
+	columns := []table.Column{
+		{Title: "PID", Width: 10},
+		{Title: "Name", Width: 20},
+		{Title: "CPU(%)", Width: 10},
+	}
+
+	rows := []table.Row{}
 	for _, p := range procs {
-		fmt.Printf("PID: %d, Name: %s, CPU: %.2f%%\n", p.PID, p.Name, p.CPU)
+		rows = append(rows, table.Row{
+			fmt.Sprintf("%d", p.PID),
+			p.Name,
+			fmt.Sprintf("%.2f", p.CPU),
+		})
+	}
+
+	t := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(20),
+	)
+
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(true)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	t.SetStyles(s)
+
+	m := model{table: t}
+	p := tea.NewProgram(m)
+	if _, err := p.Run(); err != nil {
+		fmt.Println("Error running program:", err)
+		os.Exit(1)
 	}
 }
